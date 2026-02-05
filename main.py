@@ -143,6 +143,7 @@ async def honeypot_handler(request: Request, x_api_key: str = Header(...)):
 
     # State transitions and reply selection
     reply = None
+    
     # If already completed, send neutral response
     if session["stage"] == "done":
         reply = random.choice(neutral_replies)
@@ -150,15 +151,14 @@ async def honeypot_handler(request: Request, x_api_key: str = Header(...)):
         # If scam detected, escalate to probing
         if scamDetected and session["stage"] == "new":
             session["stage"] = "probing"
+        
+        # Move from probing to collecting after 2+ turns and we have intelligence
+        if session["stage"] == "probing" and session["turns"] >= 2 and any(intelligence.get(k) for k in ("upiIds", "phoneNumbers", "phishingLinks", "bankAccounts")):
+            session["stage"] = "collecting"
+        
+        # Now generate the reply based on current stage
+        if session["stage"] == "probing":
             reply = random.choice(initial_probes)
-        elif session["stage"] == "probing":
-            # If we already extracted useful intelligence, move to collecting
-            if any(intelligence.get(k) for k in ("upiIds", "phoneNumbers", "phishingLinks", "bankAccounts")):
-                session["stage"] = "collecting"
-                reply = random.choice(probe_for_payment)
-            else:
-                # continue probing for payment method
-                reply = random.choice(probe_for_payment)
         elif session["stage"] == "collecting":
             # Ask targeted questions based on what we still need
             if not intelligence.get("upiIds"):
@@ -172,6 +172,8 @@ async def honeypot_handler(request: Request, x_api_key: str = Header(...)):
             elif not intelligence.get("possibleOtps"):
                 reply = random.choice(request_identifiers["otp"])
             else:
+                # All fields collected, mark done
+                session["stage"] = "done"
                 reply = random.choice(neutral_replies)
         else:
             # default fallback
@@ -181,21 +183,15 @@ async def honeypot_handler(request: Request, x_api_key: str = Header(...)):
     session["turns"] += 1
     session["asked"].append(reply)
 
-    # If intelligence found, finalize and callback
-    if any(intelligence.get(k) for k in ("upiIds", "phoneNumbers", "phishingLinks", "bankAccounts", "possibleOtps")):
-        session["stage"] = "done"
+    # Send final result when in collecting stage with good intelligence
+    if session["stage"] == "collecting" and any(intelligence.get(k) for k in ("upiIds", "phoneNumbers", "phishingLinks", "bankAccounts")):
         try:
             send_final_result(session_id, conversations[session_id], intelligence,
-                              "Scammer used staged tactics; intelligence captured")
+                              "Scammer provided identifiers; intelligence captured")
         except Exception:
             pass
 
-    logging.info(f"Session {session_id}: ScamDetected={scamDetected}, Text='{text}'")
-
-    # Auto callback if scam detected and intelligence found
-    if scamDetected and any(intelligence.values()):
-        send_final_result(session_id, conversations[session_id], intelligence,
-                          "Scammer used urgency tactics and attempted to collect sensitive info")
+    logging.info(f"Session {session_id}: Stage={session['stage']}, Turns={session['turns']}, ScamDetected={scamDetected}, Reply='{reply}'")
 
     return {"status": "success", "reply": reply, "intelligence": intelligence}
 
