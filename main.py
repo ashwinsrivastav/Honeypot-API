@@ -14,10 +14,18 @@ conversations = {}
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 
-# Root endpoint
+# Root endpoint (supports GET, POST, PUT)
 @app.get("/")
-def root():
+def root_get():
     return {"message": "Honeypot API is running!"}
+
+@app.post("/")
+async def root_post(request: Request, x_api_key: str = Header(...)):
+    return await honeypot_handler(request, x_api_key)
+
+@app.put("/")
+async def root_put(request: Request, x_api_key: str = Header(...)):
+    return await honeypot_handler(request, x_api_key)
 
 
 # Honeypot endpoint (POST and PUT supported)
