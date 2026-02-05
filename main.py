@@ -79,7 +79,7 @@ def send_final_result(session_id, conversation, intelligence, agent_notes):
         "agentNotes": agent_notes
     }
     try:
-        response = requests.post(
+        response = requests.put(
             "https://hackathon.guvi.in/api/updateHoneyPotFinalResult",
             json=payload,
             timeout=5
