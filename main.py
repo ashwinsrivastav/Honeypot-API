@@ -19,9 +19,13 @@ logging.basicConfig(level=logging.INFO)
 def root():
     return {"message": "Honeypot API is running!"}
 
-# Honeypot endpoint
-@app.post("/honeypot")
-async def honeypot(request: Request, x_api_key: str = Header(...)):
+
+# Honeypot endpoint (POST and PUT supported)
+from fastapi import APIRouter
+
+router = APIRouter()
+
+async def honeypot_handler(request: Request, x_api_key: str = Header(...)):
     if x_api_key != API_KEY:
         return {"status": "error", "message": "Unauthorized"}
 
@@ -68,6 +72,14 @@ async def honeypot(request: Request, x_api_key: str = Header(...)):
                           "Scammer used urgency tactics and attempted to collect sensitive info")
 
     return {"status": "success", "reply": reply, "intelligence": intelligence}
+
+@app.post("/honeypot")
+async def honeypot_post(request: Request, x_api_key: str = Header(...)):
+    return await honeypot_handler(request, x_api_key)
+
+@app.put("/honeypot")
+async def honeypot_put(request: Request, x_api_key: str = Header(...)):
+    return await honeypot_handler(request, x_api_key)
 
 # Final result callback
 def send_final_result(session_id, conversation, intelligence, agent_notes):
